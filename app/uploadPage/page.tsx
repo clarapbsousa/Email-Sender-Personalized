@@ -21,6 +21,7 @@ export default function Dashboard() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [excelData, setExcelData] = useState<ExcelData[]>([]);
+  const [subject, setSubject] = useState("Informação sobre o aluno");
   const [message, setMessage] = useState(
     "Olá {nomeEE},\n\nVenho por este meio informar sobre o aluno {nomeAluno}.\n\nCom os melhores cumprimentos"
   );
@@ -67,6 +68,7 @@ export default function Dashboard() {
         },
         body: JSON.stringify({
           excelData,
+          subject,
           message,
         }),
       })
@@ -147,10 +149,21 @@ export default function Dashboard() {
               Use {"{nomeEE}"} e {"{nomeAluno}"} para inserir os nomes
               automaticamente
             </p>
+            
+            <label className="input-label">Assunto</label>
+            <input
+              type="text"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              className="subject-input"
+              placeholder="Assunto do email"
+            />
+
+            <label className="input-label">Mensagem</label>
             <InputTextarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              rows={15}
+              rows={12}
               className="message-textarea"
               placeholder="Escreva a sua mensagem aqui..."
             />

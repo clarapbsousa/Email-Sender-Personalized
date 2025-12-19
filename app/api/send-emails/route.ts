@@ -5,7 +5,7 @@ import { authOptions } from "../auth/[...nextauth]/route"
 
 export async function POST(request: NextRequest) {
   try {
-    const { excelData, message } = await request.json()
+    const { excelData, subject, message } = await request.json()
     const session: any = await getServerSession(authOptions)
 
     if (!session?.user?.email || !session?.accessToken) {
@@ -33,18 +33,22 @@ export async function POST(request: NextRequest) {
         const personalizedMessage = message
           .replace(/{nomeEE}/g, row.nomeEE)
           .replace(/{nomeAluno}/g, row.nomeAluno)
+        
+        const personalizedSubject = subject
+          .replace(/{nomeEE}/g, row.nomeEE)
+          .replace(/{nomeAluno}/g, row.nomeAluno)
 
         const emailContent = [
           `From: ${session.user.email}`,
           `To: ${row.emailEE}`,
-          "Content-Type: text/html; charset=utf-8",
+          "Content-Type: text/html; charset=UTF-8",
           "MIME-Version: 1.0",
-          `Subject: Informação sobre o aluno`,
+          `Subject: =?UTF-8?B?${Buffer.from(personalizedSubject).toString("base64")}?=`,
           "",
           personalizedMessage.replace(/\n/g, "<br>"),
         ].join("\n")
 
-        const encodedEmail = Buffer.from(emailContent)
+        const encodedEmail = Buffer.from(emailContent, "utf-8")
           .toString("base64")
           .replace(/\+/g, "-")
           .replace(/\//g, "_")
