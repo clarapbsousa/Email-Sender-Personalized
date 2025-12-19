@@ -107,13 +107,15 @@ body {
 }
 
 .logout-button {
-  background: transparent !important;
-  border: 1px solid #ffffff !important;
+  background: var(--secondary-color) !important;
+  border: none !important;
   color: #ffffff !important;
+  padding: 0.75rem !important;
+  gap: 0.5em;
 }
 
 .logout-button:hover {
-  background: rgba(255, 255, 255, 0.1) !important;
+  background: #2a7fc4 !important;
 }
 
 .dashboard-main {
@@ -152,6 +154,12 @@ body {
 
 .excel-upload {
   margin-bottom: 2rem;
+}
+
+.excel-upload .p-button {
+  padding: 0.75rem !important;
+  font-size: 1rem !important;
+  gap: 0.5em;
 }
 
 .data-preview {

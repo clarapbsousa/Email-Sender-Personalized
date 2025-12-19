@@ -5,7 +5,7 @@ import { signIn } from "next-auth/react";
 
 export default function Home() {
   const handleLogin = () => {
-    signIn("google", { callbackUrl: "/dashboard" });
+    signIn("google", { callbackUrl: "/uploadPage" });
   };
 
   return (

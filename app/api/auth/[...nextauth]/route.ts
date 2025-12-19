@@ -16,7 +16,7 @@ const handler = NextAuth({
       return true
     },
     async redirect({ url, baseUrl }) {
-      return baseUrl + '/dashboard'
+      return baseUrl + '/uploadPage'
     },
     async session({ session, token }) {
       return session
