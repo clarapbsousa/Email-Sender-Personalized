@@ -2,6 +2,7 @@ import './globals.css'
 import 'primereact/resources/themes/lara-light-blue/theme.css'
 import 'primereact/resources/primereact.min.css'
 import 'primeicons/primeicons.css'
+import Providers from './providers'
 
 export const metadata = {
   title: 'Email Sender - Emails Personalizados',
@@ -15,7 +16,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt">
-      <body>{children}</body>
+      <body>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   )
 }

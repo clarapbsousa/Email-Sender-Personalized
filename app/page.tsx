@@ -1,10 +1,11 @@
 "use client";
 
 import { Button } from "primereact/button";
+import { signIn } from "next-auth/react";
 
 export default function Home() {
   const handleLogin = () => {
-    console.log("Login clicked");
+    signIn("google", { callbackUrl: "/dashboard" });
   };
 
   return (
