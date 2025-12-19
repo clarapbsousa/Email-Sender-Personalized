@@ -24,6 +24,7 @@ export default function Dashboard() {
   const [message, setMessage] = useState(
     "Olá {nomeEE},\n\nVenho por este meio informar sobre o aluno {nomeAluno}.\n\nCom os melhores cumprimentos"
   );
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -56,9 +57,33 @@ export default function Dashboard() {
     reader.readAsBinaryString(file);
   };
 
-  const handleSendEmails = () => {
-    console.log("Enviar emails", { excelData, message });
-    alert(`Preparado para enviar ${excelData.length} emails!`);
+  const handleSendEmails = async () => {
+    setSending(true)
+    try {
+      const response = await fetch("/api/send-emails", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          excelData,
+          message,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        alert(data.message)
+      } else {
+        alert(`Erro ao enviar emails: ${data.message}`)
+      }
+    } catch (error) {
+      console.error("Erro:", error)
+      alert("Erro ao enviar emails. Verifique a consola para mais detalhes.")
+    } finally {
+      setSending(false)
+    }
   };
 
   if (status === "loading") {
@@ -142,11 +167,11 @@ export default function Dashboard() {
             </div>
 
             <Button
-              label={`Enviar ${excelData.length} Emails`}
+              label={sending ? "A enviar..." : `Enviar ${excelData.length} Emails`}
               icon="pi pi-send"
               onClick={handleSendEmails}
               className="send-button"
-              disabled={excelData.length === 0}
+              disabled={excelData.length === 0 || sending}
               size="large"
             />
           </div>
