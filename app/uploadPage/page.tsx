@@ -92,8 +92,8 @@ export default function Dashboard() {
               onUpload={handleFileUpload}
               customUpload
               uploadHandler={handleFileUpload}
-              auto
               chooseLabel="Escolher Ficheiro"
+              auto
               className="excel-upload"
             />
 
