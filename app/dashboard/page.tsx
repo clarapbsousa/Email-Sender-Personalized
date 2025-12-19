@@ -1,19 +1,65 @@
-"use client"
+"use client";
 
-import { useSession, signOut } from "next-auth/react"
-import { useRouter } from "next/navigation"
-import { useEffect } from "react"
-import { Button } from "primereact/button"
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { FileUpload } from "primereact/fileupload";
+import { InputTextarea } from "primereact/inputtextarea";
+import { Button } from "primereact/button";
+import { DataTable } from "primereact/datatable";
+import { Column } from "primereact/column";
+import Header from "../components/Header";
+import * as XLSX from "xlsx";
+
+interface ExcelData {
+  nomeEE: string;
+  nomeAluno: string;
+  emailEE: string;
+}
 
 export default function Dashboard() {
-  const { data: session, status } = useSession()
-  const router = useRouter()
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const [excelData, setExcelData] = useState<ExcelData[]>([]);
+  const [message, setMessage] = useState(
+    "Olá {nomeEE},\n\nVenho por este meio informar sobre o aluno {nomeAluno}.\n\nCom os melhores cumprimentos"
+  );
 
   useEffect(() => {
     if (status === "unauthenticated") {
-      router.push("/")
+      router.push("/");
     }
-  }, [status, router])
+  }, [status, router]);
+
+  const handleFileUpload = (event: any) => {
+    const file = event.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const data = e.target?.result;
+      const workbook = XLSX.read(data, { type: "binary" });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const json = XLSX.utils.sheet_to_json(worksheet) as any[];
+
+      const parsedData: ExcelData[] = json.map((row) => ({
+        nomeEE: row["Nome EE"] || row["Nome do EE"] || row["nomeEE"] || "",
+        nomeAluno:
+          row["Nome"] || row["Nome do Aluno"] || row["nomeAluno"] || "",
+        emailEE:
+          row["Email pessoal EE"] || row["Email do EE"] || row["emailEE"] || "",
+      }));
+
+      setExcelData(parsedData);
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const handleSendEmails = () => {
+    console.log("Enviar emails", { excelData, message });
+    alert(`Preparado para enviar ${excelData.length} emails!`);
+  };
 
   if (status === "loading") {
     return (
@@ -22,29 +68,90 @@ export default function Dashboard() {
           <p>A carregar...</p>
         </div>
       </div>
-    )
+    );
   }
 
   if (!session) {
-    return null
+    return null;
   }
 
   return (
-    <main className="main">
-      <div className="container">
-        <h1 className="title">Bem-vindo, {session.user?.name}!</h1>
-        <p className="description" style={{ marginTop: "1rem" }}>
-          Email: {session.user?.email}
-        </p>
-        <div style={{ marginTop: "2rem" }}>
-          <Button
-            label="Terminar Sessão"
-            onClick={() => signOut({ callbackUrl: "/" })}
-            severity="danger"
-            size="large"
-          />
+    <>
+      <Header />
+      <main className="dashboard-main">
+        <div className="dashboard-container">
+          <div className="upload-section">
+            <h2 className="section-title">Upload Ficheiro Excel</h2>
+            <p className="section-description">
+              O ficheiro deve conter: Nome EE, Nome (do aluno), Email pessoal EE
+            </p>
+            <FileUpload
+              name="excel"
+              accept=".xlsx,.xls"
+              maxFileSize={1000000}
+              onUpload={handleFileUpload}
+              customUpload
+              uploadHandler={handleFileUpload}
+              auto
+              chooseLabel="Escolher Ficheiro"
+              className="excel-upload"
+            />
+
+            {excelData.length > 0 && (
+              <div className="data-preview">
+                <h3>
+                  Pré-visualização dos Dados ({excelData.length} registos)
+                </h3>
+                <DataTable
+                  value={excelData}
+                  className="data-table"
+                  paginator
+                  rows={5}
+                >
+                  <Column field="nomeEE" header="Nome do EE"></Column>
+                  <Column field="nomeAluno" header="Nome do Aluno"></Column>
+                  <Column field="emailEE" header="Email do EE"></Column>
+                </DataTable>
+              </div>
+            )}
+          </div>
+
+          <div className="message-section">
+            <h2 className="section-title">Mensagem do Email</h2>
+            <p className="section-description">
+              Use {"{nomeEE}"} e {"{nomeAluno}"} para inserir os nomes
+              automaticamente
+            </p>
+            <InputTextarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              rows={15}
+              className="message-textarea"
+              placeholder="Escreva a sua mensagem aqui..."
+            />
+
+            <div className="preview-box">
+              <h3>Pré-visualização</h3>
+              <div className="preview-content">
+                {excelData.length > 0
+                  ? message
+                      .replace(/{nomeEE}/g, excelData[0].nomeEE)
+                      .replace(/{nomeAluno}/g, excelData[0].nomeAluno)
+                  : message}
+              </div>
+            </div>
+
+            <Button
+              label={`Enviar ${excelData.length} Emails`}
+              icon="pi pi-send"
+              onClick={handleSendEmails}
+              className="send-button"
+              disabled={excelData.length === 0}
+              size="large"
+            />
+          </div>
         </div>
-      </div>
-    </main>
-  )
+      </main>
+    </>
+  );
 }
