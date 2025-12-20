@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { google } from "googleapis"
 import { getServerSession } from "next-auth"
-import { authOptions } from "../auth/[...nextauth]/route"
+import { authOptions } from "@/lib/auth"
 
 export async function POST(request: NextRequest) {
   try {
@@ -76,14 +76,14 @@ export async function POST(request: NextRequest) {
     const BATCH_SIZE = 100
     const results = []
     
-    console.log(`📧 Iniciando envio de ${excelData.length} emails em lotes de ${BATCH_SIZE}...`)
+    console.log(`Iniciando envio de ${excelData.length} emails em lotes de ${BATCH_SIZE}...`)
     
     for (let i = 0; i < excelData.length; i += BATCH_SIZE) {
       const batch = excelData.slice(i, i + BATCH_SIZE)
-      console.log(`📦 Processando lote ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(excelData.length / BATCH_SIZE)} (${batch.length} emails)`)
+      console.log(`Processando lote ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(excelData.length / BATCH_SIZE)} (${batch.length} emails)`)
       
       const batchResults = await Promise.all(
-        batch.map((row, index) => sendEmail(row, i + index))
+        batch.map((row: any, index: number) => sendEmail(row, i + index))
       )
       
       results.push(...batchResults)

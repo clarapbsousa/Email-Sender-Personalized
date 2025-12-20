@@ -84,7 +84,7 @@ export default function Dashboard() {
       }
     } catch (error) {
       console.error("Erro:", error)
-      setSendResult("✗ Erro ao enviar emails. Verifique a consola para mais detalhes.")
+      setSendResult("Erro ao enviar emails. Verifique a consola para mais detalhes.")
     } finally {
       setSending(false)
     }
@@ -135,7 +135,7 @@ export default function Dashboard() {
                   value={excelData}
                   className="data-table"
                   paginator
-                  rows={5}
+                  rows={25}
                 >
                   <Column field="nomeEE" header="Nome do EE"></Column>
                   <Column field="nomeAluno" header="Nome do Aluno"></Column>
