@@ -68,7 +68,6 @@ body {
   min-width: 150px;
   font-size: 1.1rem;
   padding: 0.75rem 2rem;
-  margin-top: 2rem;
 }
 
 /* Header */
@@ -265,6 +264,46 @@ body {
 .send-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.sending-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  background: rgba(57, 147, 221, 0.1);
+  border: 1px solid var(--secondary-color);
+  border-radius: 8px;
+}
+
+.sending-status p {
+  font-size: 1rem;
+  color: #ffffff;
+  margin: 0;
+}
+
+.send-result {
+  margin-top: 1.5rem;
+  padding: 1rem 1.5rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  text-align: center;
+}
+
+.send-result.success {
+  background: rgba(46, 204, 113, 0.2);
+  border: 1px solid #2ecc71;
+  color: #2ecc71;
+}
+
+.send-result.error {
+  background: rgba(231, 76, 60, 0.2);
+  border: 1px solid #e74c3c;
+  color: #e74c3c;
 }
 
 @media (max-width: 768px) {

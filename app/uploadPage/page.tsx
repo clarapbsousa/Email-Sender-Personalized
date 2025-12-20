@@ -26,6 +26,7 @@ export default function Dashboard() {
     "Olá {nomeEE},\n\nVenho por este meio informar sobre o aluno {nomeAluno}.\n\nCom os melhores cumprimentos"
   );
   const [sending, setSending] = useState(false);
+  const [sendResult, setSendResult] = useState<string | null>(null);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -60,6 +61,7 @@ export default function Dashboard() {
 
   const handleSendEmails = async () => {
     setSending(true)
+    setSendResult(null)
     try {
       const response = await fetch("/api/send-emails", {
         method: "POST",
@@ -76,13 +78,13 @@ export default function Dashboard() {
       const data = await response.json()
 
       if (data.success) {
-        alert(data.message)
+        setSendResult(`✓ ${data.message}`)
       } else {
-        alert(`Erro ao enviar emails: ${data.message}`)
+        setSendResult(`✗ Erro: ${data.message}`)
       }
     } catch (error) {
       console.error("Erro:", error)
-      alert("Erro ao enviar emails. Verifique a consola para mais detalhes.")
+      setSendResult("✗ Erro ao enviar emails. Verifique a consola para mais detalhes.")
     } finally {
       setSending(false)
     }
@@ -178,15 +180,20 @@ export default function Dashboard() {
                   : message}
               </div>
             </div>
-
+            
             <Button
               label={sending ? "A enviar..." : `Enviar ${excelData.length} Emails`}
-              icon="pi pi-send"
+              icon={sending ? "pi pi-spin pi-spinner" : "pi pi-send"}
               onClick={handleSendEmails}
               className="send-button"
               disabled={excelData.length === 0 || sending}
               size="large"
             />
+            {sendResult && (
+              <div className={`send-result ${sendResult.startsWith('✓') ? 'success' : 'error'}`}>
+                {sendResult}
+              </div>
+            )}
           </div>
         </div>
       </main>
