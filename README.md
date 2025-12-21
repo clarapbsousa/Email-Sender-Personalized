@@ -62,4 +62,4 @@ npm run dev
 ---
 
 ### Nota importante:
-A API do Gmail tem uma limitação de **500 emails por dia** por conta gratuita. Por este motivo, este projeto ainda está em desenvolvimento (WIP) enquanto procuro uma alternativa gratuita, porque sou pobre e não tenho dinheiro para serviços pagos de envio de emails em massa. 
+A API do Gmail tem uma limitação de **500 emails por dia** para contas gratuitas, ou **2000 emails por dia** para contas Google Workspace (institucionais). Por este motivo, este projeto ainda está em desenvolvimento (WIP) enquanto procuro uma alternativa gratuita para volumes maiores, porque sou pobre e não tenho dinheiro para serviços pagos de envio de emails em massa. 
