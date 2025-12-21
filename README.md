@@ -12,7 +12,7 @@ Esta aplicação permite enviar emails personalizados automaticamente a partir d
 - **Upload de ficheiro Excel** - Suporta formatos `.xls` e `.xlsx`
 - **Personalização de mensagens** - Use `{nomeEE}` e `{nomeAluno}` como placeholders
 - **Assunto personalizável** - O assunto também suporta placeholders
-- **Pré-visualização** - Veja como ficará o email antes de enviar
+- **Pré-visualização** - Vê como ficará o email antes de enviar
 - **Envio automático via Gmail API** - Integração direta com o Gmail
 - **Sistema de retry inteligente** - Respeita rate limits e tenta novamente automaticamente
 - **Cache de status** - Evita duplicação de emails já enviados
