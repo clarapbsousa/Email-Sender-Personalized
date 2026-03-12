@@ -284,6 +284,7 @@ export default function Dashboard() {
               <div className="mb-8">
                 <h2 className="text-3xl font-display font-bold mb-2 text-white">Upload da Lista de Alunos</h2>
                 <p style={{ color: '#8899A6' }}>Carregue um ficheiro Excel com os dados dos encarregados de educação</p>
+                <p style={{ color: '#8899A6' }}>Nota: Os dados devem estar com nomeEE, nomeAluno e emailEE</p>
               </div>
 
               <div

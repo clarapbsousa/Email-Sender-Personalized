@@ -112,12 +112,12 @@ body {
 }
 
 .checkmark__circle {
-  stroke-dasharray: 166;
+  stroke-dasharray: 206;
   stroke-dashoffset: 166;
   stroke-width: 2;
   stroke-miterlimit: 10;
   stroke: #00BA7C;
-  fill: none;
+  fill: #00BA7C;
   animation: stroke 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
 }
 
