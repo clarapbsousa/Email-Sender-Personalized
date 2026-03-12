@@ -5,7 +5,7 @@ import { signIn } from "next-auth/react";
 
 export default function Home() {
   const [typewriterText, setTypewriterText] = useState("");
-  const fullText = "Streamline your school communications with personalized invitations...";
+  const fullText = "Otimize a comunicação da sua escola com convites personalizados...";
 
   useEffect(() => {
     let index = 0;
