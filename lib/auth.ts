@@ -9,6 +9,9 @@ export const authOptions: AuthOptions = {
       authorization: {
         params: {
           scope: "openid email profile https://www.googleapis.com/auth/gmail.send",
+          prompt: "consent",
+          access_type: "offline",
+          response_type: "code"
         },
       },
     }),
