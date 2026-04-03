@@ -21,6 +21,7 @@ export default function Dashboard() {
   const router = useRouter();
   const [excelData, setExcelData] = useState<ExcelRow[]>([]);
   const [excelColumns, setExcelColumns] = useState<string[]>([]);
+  const [selectedEmailColumn, setSelectedEmailColumn] = useState("");
   const [currentStep, setCurrentStep] = useState<Step>(1);
   const [subject, setSubject] = useState("Convite - Espetáculo Final da Escola");
   const [body, setBody] = useState(
@@ -55,18 +56,22 @@ export default function Dashboard() {
     [escapeRegExp]
   );
 
-  const extractEmailFromRow = useCallback((row: ExcelRow) => {
-    const entries = Object.entries(row);
-    const emailRegex = /^\S+@\S+\.\S+$/;
+  const emailColumnValidation = useMemo(() => {
+    if (!selectedEmailColumn || !excelData.length) {
+      return { hasSelection: Boolean(selectedEmailColumn), invalidCount: 0, isValid: false };
+    }
 
-    const emailColumn = entries.find(
-      ([column, value]) => /email/i.test(column) && emailRegex.test(value.trim())
-    );
-    if (emailColumn) return emailColumn[1];
+    const invalidCount = excelData.reduce((count, row) => {
+      const value = (row[selectedEmailColumn] || "").trim();
+      return value.includes("@") ? count : count + 1;
+    }, 0);
 
-    const firstEmailLikeValue = entries.find(([, value]) => emailRegex.test(value.trim()));
-    return firstEmailLikeValue?.[1] || "ee@exemplo.com";
-  }, []);
+    return {
+      hasSelection: true,
+      invalidCount,
+      isValid: invalidCount === 0,
+    };
+  }, [excelData, selectedEmailColumn]);
 
   const usedVariableCount = useMemo(() => {
     const variableRegex = /{{\s*([^}]+)\s*}}|{\s*([^}]+)\s*}/g;
@@ -138,6 +143,7 @@ export default function Dashboard() {
         });
 
         setExcelColumns(columns);
+        setSelectedEmailColumn("");
         setExcelData(parsed);
         setToast({ message: "", type: "info", visible: false });
         showToast("Ficheiro carregado com sucesso!", "success");
@@ -166,6 +172,7 @@ export default function Dashboard() {
   const resetUpload = () => {
     setExcelData([]);
     setExcelColumns([]);
+    setSelectedEmailColumn("");
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -200,6 +207,16 @@ export default function Dashboard() {
   };
 
   const handleSendEmails = async () => {
+    if (!selectedEmailColumn) {
+      showToast("Selecione primeiro a coluna de emails.", "error");
+      return;
+    }
+
+    if (!emailColumnValidation.isValid) {
+      showToast("Todos os valores da coluna de email devem conter @.", "error");
+      return;
+    }
+
     setSending(true);
     showToast("A enviar convites...", "loading");
     try {
@@ -211,6 +228,7 @@ export default function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           excelData,
+          emailColumn: selectedEmailColumn,
           subject: apiSubject,
           message: apiMessage,
         }),
@@ -234,6 +252,7 @@ export default function Dashboard() {
   const startNewCampaign = () => {
     setExcelData([]);
     setExcelColumns([]);
+    setSelectedEmailColumn("");
     setCurrentStep(1);
     setSubject("Convite - Espetáculo Final da Escola");
     setBody(
@@ -381,6 +400,35 @@ export default function Dashboard() {
 
               {excelData.length > 0 && (
                 <div className="mt-8 animate-slide-up">
+                  <div className="mb-6">
+                    <label className="block text-sm font-medium mb-2" style={{ color: '#8899A6' }}>
+                      Coluna de Email (obrigatório)
+                    </label>
+                    <select
+                      value={selectedEmailColumn}
+                      onChange={(e) => setSelectedEmailColumn(e.target.value)}
+                      className="w-full twitter-input rounded-xl px-4 py-3 font-medium"
+                    >
+                      <option value="">Selecione a coluna com emails</option>
+                      {excelColumns.map((columnName) => (
+                        <option key={columnName} value={columnName}>
+                          {columnName}
+                        </option>
+                      ))}
+                    </select>
+
+                    {selectedEmailColumn && !emailColumnValidation.isValid && (
+                      <p className="mt-2 text-sm" style={{ color: '#F4212E' }}>
+                        A coluna selecionada tem {emailColumnValidation.invalidCount} valor(es) sem @.
+                      </p>
+                    )}
+                    {selectedEmailColumn && emailColumnValidation.isValid && (
+                      <p className="mt-2 text-sm" style={{ color: '#00BA7C' }}>
+                        Coluna válida: todos os valores contêm @.
+                      </p>
+                    )}
+                  </div>
+
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold flex items-center space-x-2 text-white">
                       <svg className="w-5 h-5" style={{ color: '#00BA7C' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -427,6 +475,7 @@ export default function Dashboard() {
                   <div className="mt-6 flex justify-end">
                     <button
                       onClick={() => setCurrentStep(2)}
+                      disabled={!selectedEmailColumn || !emailColumnValidation.isValid}
                       className="btn-shine twitter-btn-primary text-white font-bold py-3 px-8 rounded-xl flex items-center space-x-2 transition-all transform hover:scale-[1.02]"
                     >
                       <span>Continuar para Template</span>
@@ -512,7 +561,9 @@ export default function Dashboard() {
                     <div className="pb-3 mb-3" style={{ borderBottom: '1px solid #38444D' }}>
                       <span className="text-sm" style={{ color: '#8899A6' }}>Para:</span>
                       <span className="ml-2 text-sm font-medium" style={{ color: '#1DA1F2' }}>
-                        {excelData.length > 0 ? extractEmailFromRow(excelData[0]) : 'ee@exemplo.com'}
+                        {excelData.length > 0 && selectedEmailColumn
+                          ? excelData[0][selectedEmailColumn] || 'ee@exemplo.com'
+                          : 'ee@exemplo.com'}
                       </span>
                     </div>
                     <div className="pb-3 mb-3" style={{ borderBottom: '1px solid #38444D' }}>

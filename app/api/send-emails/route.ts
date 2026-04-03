@@ -6,19 +6,6 @@ import { authOptions } from "@/lib/auth"
 const emailStatusCache = new Map<string, { email: string; status: 'pending' | 'sent' | 'failed'; error?: string }>()
 type ExcelRow = Record<string, string>
 
-const extractEmailFromRow = (row: ExcelRow) => {
-  const entries = Object.entries(row)
-  const emailRegex = /^\S+@\S+\.\S+$/
-
-  const emailColumn = entries.find(([columnName, value]) => {
-    return /email/i.test(columnName) && emailRegex.test((value || "").trim())
-  })
-  if (emailColumn) return emailColumn[1]
-
-  const firstEmailLikeValue = entries.find(([, value]) => emailRegex.test((value || "").trim()))
-  return firstEmailLikeValue?.[1] || ""
-}
-
 const escapeRegExp = (value: string) => {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
@@ -41,11 +28,39 @@ export async function POST(request: NextRequest) {
   try {
     const {
       excelData,
+      emailColumn,
       subject,
       message,
       resumeSessionId,
-    }: { excelData: ExcelRow[]; subject: string; message: string; resumeSessionId?: string } = await request.json()
+    }: {
+      excelData: ExcelRow[]
+      emailColumn: string
+      subject: string
+      message: string
+      resumeSessionId?: string
+    } = await request.json()
     const session: any = await getServerSession(authOptions)
+
+    if (!emailColumn) {
+      return NextResponse.json(
+        { success: false, message: "É obrigatório selecionar a coluna de emails." },
+        { status: 400 }
+      )
+    }
+
+    const invalidRows = excelData
+      .map((row, index) => ({ index, value: (row[emailColumn] || "").trim() }))
+      .filter(({ value }) => !value.includes("@"))
+
+    if (invalidRows.length > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `A coluna '${emailColumn}' contém ${invalidRows.length} valor(es) inválido(s) sem @.`,
+        },
+        { status: 400 }
+      )
+    }
 
     if (!session?.user?.email || !session?.accessToken) {
       return NextResponse.json(
@@ -70,10 +85,10 @@ export async function POST(request: NextRequest) {
     const gmail = google.gmail({ version: "v1", auth: oauth2Client })
 
     const sendEmail = async (row: ExcelRow, index: number, retryCount = 0): Promise<any> => {
-      const recipientEmail = extractEmailFromRow(row)
+      const recipientEmail = (row[emailColumn] || "").trim()
 
       if (!recipientEmail) {
-        return { email: "", success: false, error: "Nenhuma coluna de email válida encontrada na linha" }
+        return { email: "", success: false, error: `Linha sem valor para a coluna '${emailColumn}'` }
       }
 
       const emailKey = `${sessionId}-${recipientEmail}`
