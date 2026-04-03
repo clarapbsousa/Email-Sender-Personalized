@@ -2,15 +2,11 @@
 
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Header from "../components/Header";
 import * as XLSX from "xlsx";
 
-interface ExcelData {
-  nomeEE: string;
-  nomeAluno: string;
-  emailEE: string;
-}
+type ExcelRow = Record<string, string>;
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -23,13 +19,13 @@ interface Toast {
 export default function Dashboard() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const [excelData, setExcelData] = useState<ExcelData[]>([]);
+  const [excelData, setExcelData] = useState<ExcelRow[]>([]);
+  const [excelColumns, setExcelColumns] = useState<string[]>([]);
+  const [selectedEmailColumns, setSelectedEmailColumns] = useState<string[]>([]);
   const [currentStep, setCurrentStep] = useState<Step>(1);
-  const [subject, setSubject] = useState(
-    "Convite: {{studentName}} - Espetáculo Final da Escola"
-  );
+  const [subject, setSubject] = useState("Convite - Espetáculo Final da Escola");
   const [body, setBody] = useState(
-    "Caro/a {{EEName}},\n\nVimos por este meio convidá-lo/a e à sua família para o Espetáculo Final da Escola, onde {{studentName}} irá apresentar o seu trabalho.\n\nData: [Inserir Data]\nHora: [Inserir Hora]\nLocal: Auditório da Escola\n\nEsperamos vê-lo/a em breve!\n\nCom os melhores cumprimentos,\nA Equipa da Escola"
+    "Caro/a,\n\nVimos por este meio convidá-lo/a e à sua família para o Espetáculo Final da Escola.\n\nData: [Inserir Data]\nHora: [Inserir Hora]\nLocal: Auditório da Escola\n\nEsperamos vê-lo/a em breve!\n\nCom os melhores cumprimentos,\nA Equipa da Escola"
   );
   const [sending, setSending] = useState(false);
   const [successCount, setSuccessCount] = useState(0);
@@ -41,6 +37,85 @@ export default function Dashboard() {
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const escapeRegExp = useCallback((value: string) => {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }, []);
+
+  const applyTemplateWithRow = useCallback(
+    (text: string, row: ExcelRow) => {
+      let resolvedText = text;
+      Object.entries(row).forEach(([columnName, columnValue]) => {
+        const escapedColumnName = escapeRegExp(columnName);
+        resolvedText = resolvedText
+          .replace(new RegExp(`{{\\s*${escapedColumnName}\\s*}}`, "g"), columnValue)
+          .replace(new RegExp(`{\\s*${escapedColumnName}\\s*}`, "g"), columnValue);
+      });
+      return resolvedText;
+    },
+    [escapeRegExp]
+  );
+
+  const emailColumnValidation = useMemo(() => {
+    if (!selectedEmailColumns.length || !excelData.length) {
+      return {
+        hasSelection: selectedEmailColumns.length > 0,
+        invalidCount: 0,
+        invalidByColumn: {} as Record<string, number>,
+        isValid: false,
+      };
+    }
+
+    const invalidByColumn = selectedEmailColumns.reduce<Record<string, number>>(
+      (acc, columnName) => {
+        const invalidForColumn = excelData.reduce((count, row) => {
+          const value = (row[columnName] || "").trim();
+          return value.includes("@") ? count : count + 1;
+        }, 0);
+
+        acc[columnName] = invalidForColumn;
+        return acc;
+      },
+      {}
+    );
+
+    const invalidCount = Object.values(invalidByColumn).reduce(
+      (total, count) => total + count,
+      0
+    );
+
+    return {
+      hasSelection: true,
+      invalidCount,
+      invalidByColumn,
+      isValid: invalidCount === 0,
+    };
+  }, [excelData, selectedEmailColumns]);
+
+  const previewRecipients = useMemo(() => {
+    if (!excelData.length || selectedEmailColumns.length === 0) return "ee@exemplo.com";
+
+    const recipients = selectedEmailColumns
+      .map((columnName) => (excelData[0][columnName] || "").trim())
+      .filter((value) => value !== "");
+
+    return recipients.length > 0 ? recipients.join(", ") : "ee@exemplo.com";
+  }, [excelData, selectedEmailColumns]);
+
+  const usedVariableCount = useMemo(() => {
+    const variableRegex = /{{\s*([^}]+)\s*}}|{\s*([^}]+)\s*}/g;
+    const content = `${subject}\n${body}`;
+    const found = new Set<string>();
+
+    let match = variableRegex.exec(content);
+    while (match !== null) {
+      const variableName = (match[1] || match[2] || "").trim();
+      if (variableName) found.add(variableName);
+      match = variableRegex.exec(content);
+    }
+
+    return found.size;
+  }, [subject, body]);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -67,12 +142,37 @@ export default function Dashboard() {
         const workbook = XLSX.read(data, { type: "binary" });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
-        const json = XLSX.utils.sheet_to_json(worksheet) as any[];
-        const parsed: ExcelData[] = json.map((row) => ({
-          nomeEE: row["Nome EE"] || row["Nome do EE"] || row["nomeEE"] || row["EEName"] || "",
-          nomeAluno: row["Nome"] || row["Nome do Aluno"] || row["nomeAluno"] || row["studentName"] || "",
-          emailEE: row["Email pessoal EE"] || row["Email do EE"] || row["emailEE"] || row["EEemail"] || "",
-        }));
+        const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, {
+          defval: "",
+        });
+
+        if (!json.length) {
+          setExcelData([]);
+          setExcelColumns([]);
+          setToast({ message: "", type: "info", visible: false });
+          showToast("O ficheiro não contém linhas para importar.", "error");
+          return;
+        }
+
+        const columns = Array.from(
+          new Set(
+            json.flatMap((row) =>
+              Object.keys(row).filter((columnName) => columnName.trim() !== "")
+            )
+          )
+        );
+
+        const parsed: ExcelRow[] = json.map((row) => {
+          const normalizedRow: ExcelRow = {};
+          columns.forEach((columnName) => {
+            const rawValue = row[columnName];
+            normalizedRow[columnName] = rawValue == null ? "" : String(rawValue);
+          });
+          return normalizedRow;
+        });
+
+        setExcelColumns(columns);
+        setSelectedEmailColumns([]);
         setExcelData(parsed);
         setToast({ message: "", type: "info", visible: false });
         showToast("Ficheiro carregado com sucesso!", "success");
@@ -100,6 +200,8 @@ export default function Dashboard() {
 
   const resetUpload = () => {
     setExcelData([]);
+    setExcelColumns([]);
+    setSelectedEmailColumns([]);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -130,46 +232,39 @@ export default function Dashboard() {
 
   const getPreview = (text: string) => {
     if (!excelData.length) return text;
-    const s = excelData[0];
-    return text
-      .replace(/{{EEName}}/g, s.nomeEE)
-      .replace(/{{EEemail}}/g, s.emailEE)
-      .replace(/{{studentName}}/g, s.nomeAluno)
-      .replace(/{nomeEE}/g, s.nomeEE)
-      .replace(/{nomeAluno}/g, s.nomeAluno);
+    return applyTemplateWithRow(text, excelData[0]);
   };
 
   const handleSendEmails = async () => {
+    if (!selectedEmailColumns.length) {
+      showToast("Selecione pelo menos uma coluna de emails.", "error");
+      return;
+    }
+
+    if (!emailColumnValidation.isValid) {
+      showToast("Todos os valores da coluna de email devem conter @.", "error");
+      return;
+    }
+
     setSending(true);
     showToast("A enviar convites...", "loading");
     try {
-      const mappedData = excelData.map((row) => ({
-        nomeEE: row.nomeEE,
-        nomeAluno: row.nomeAluno,
-        emailEE: row.emailEE,
-      }));
-      // convert template vars to the API format
-      const apiMessage = body
-        .replace(/{{EEName}}/g, "{nomeEE}")
-        .replace(/{{studentName}}/g, "{nomeAluno}")
-        .replace(/{{EEemail}}/g, "{emailEE}");
-      const apiSubject = subject
-        .replace(/{{EEName}}/g, "{nomeEE}")
-        .replace(/{{studentName}}/g, "{nomeAluno}")
-        .replace(/{{EEemail}}/g, "{emailEE}");
+      const apiMessage = body.replace(/{{\s*([^}]+)\s*}}/g, "{$1}");
+      const apiSubject = subject.replace(/{{\s*([^}]+)\s*}}/g, "{$1}");
 
       const response = await fetch("/api/send-emails", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          excelData: mappedData,
+          excelData,
+          emailColumns: selectedEmailColumns,
           subject: apiSubject,
           message: apiMessage,
         }),
       });
       const data = await response.json();
       if (data.success) {
-        setSuccessCount(excelData.length);
+        setSuccessCount(data?.stats?.successCount ?? excelData.length);
         setCurrentStep(4);
         setToast({ message: "", type: "info", visible: false });
         showToast("Todos os convites foram enviados!", "success");
@@ -185,10 +280,12 @@ export default function Dashboard() {
 
   const startNewCampaign = () => {
     setExcelData([]);
+    setExcelColumns([]);
+    setSelectedEmailColumns([]);
     setCurrentStep(1);
-    setSubject("Convite: {{studentName}} - Espetáculo Final da Escola");
+    setSubject("Convite - Espetáculo Final da Escola");
     setBody(
-      "Caro/a {{EEName}},\n\nVimos por este meio convidá-lo/a e à sua família para o Espetáculo Final da Escola, onde {{studentName}} irá apresentar o seu trabalho.\n\nData: [Inserir Data]\nHora: [Inserir Hora]\nLocal: Auditório da Escola\n\nEsperamos vê-lo/a em breve!\n\nCom os melhores cumprimentos,\nA Equipa da Escola"
+      "Caro/a,\n\nVimos por este meio convidá-lo/a e à sua família para o Espetáculo Final da Escola.\n\nData: [Inserir Data]\nHora: [Inserir Hora]\nLocal: Auditório da Escola\n\nEsperamos vê-lo/a em breve!\n\nCom os melhores cumprimentos,\nA Equipa da Escola"
     );
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
@@ -283,8 +380,8 @@ export default function Dashboard() {
             <div className="glass-strong rounded-3xl p-8 md:p-12 shadow-2xl" style={{ border: '1px solid #38444D' }}>
               <div className="mb-8">
                 <h2 className="text-3xl font-display font-bold mb-2 text-white">Upload da Lista de Alunos</h2>
-                <p style={{ color: '#8899A6' }}>Carregue um ficheiro Excel com os dados dos encarregados de educação</p>
-                <p style={{ color: '#8899A6' }}>Nota: Os dados devem estar com nomeEE, nomeAluno e emailEE</p>
+                <p style={{ color: '#8899A6' }}>Carregue um ficheiro Excel com os dados que pretende usar no envio de emails</p>
+                <p style={{ color: '#8899A6' }}>As colunas serão lidas automaticamente com os nomes exatos do ficheiro</p>
               </div>
 
               <div
@@ -332,6 +429,40 @@ export default function Dashboard() {
 
               {excelData.length > 0 && (
                 <div className="mt-8 animate-slide-up">
+                  <div className="mb-6">
+                    <label className="block text-sm font-medium mb-2" style={{ color: '#8899A6' }}>
+                      Colunas de Email (obrigatório)
+                    </label>
+                    <div className="space-y-2 rounded-xl p-4 max-h-64 overflow-y-auto" style={{ border: '1px solid #38444D', background: '#15202B' }}>
+                      {excelColumns.map((columnName) => (
+                        <label key={columnName} className="flex items-center space-x-3 text-sm" style={{ color: '#8899A6' }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedEmailColumns.includes(columnName)}
+                            onChange={(e) => {
+                              setSelectedEmailColumns((previous) => {
+                                if (e.target.checked) return [...previous, columnName];
+                                return previous.filter((col) => col !== columnName);
+                              });
+                            }}
+                          />
+                          <span>{columnName}</span>
+                        </label>
+                      ))}
+                    </div>
+
+                    {selectedEmailColumns.length > 0 && !emailColumnValidation.isValid && (
+                      <p className="mt-2 text-sm" style={{ color: '#F4212E' }}>
+                        As colunas selecionadas têm {emailColumnValidation.invalidCount} valor(es) sem @.
+                      </p>
+                    )}
+                    {selectedEmailColumns.length > 0 && emailColumnValidation.isValid && (
+                      <p className="mt-2 text-sm" style={{ color: '#00BA7C' }}>
+                        Colunas válidas: todos os valores contêm @.
+                      </p>
+                    )}
+                  </div>
+
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold flex items-center space-x-2 text-white">
                       <svg className="w-5 h-5" style={{ color: '#00BA7C' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -354,23 +485,21 @@ export default function Dashboard() {
                     <table className="w-full text-left">
                       <thead style={{ background: '#253341', borderBottom: '1px solid #38444D' }}>
                         <tr>
-                          <th className="px-6 py-4 text-sm font-semibold" style={{ color: '#8899A6' }}>Nome do EE</th>
-                          <th className="px-6 py-4 text-sm font-semibold" style={{ color: '#8899A6' }}>Email</th>
-                          <th className="px-6 py-4 text-sm font-semibold" style={{ color: '#8899A6' }}>Nome do Aluno</th>
-                          <th className="px-6 py-4 text-sm font-semibold" style={{ color: '#8899A6' }}>Estado</th>
+                          {excelColumns.map((columnName) => (
+                            <th key={columnName} className="px-6 py-4 text-sm font-semibold" style={{ color: '#8899A6' }}>
+                              {columnName}
+                            </th>
+                          ))}
                         </tr>
                       </thead>
                       <tbody>
                         {excelData.map((row, i) => (
                           <tr key={i} className="transition-colors" style={{ borderTop: i > 0 ? '1px solid #38444D' : undefined }}>
-                            <td className="px-6 py-4 text-sm font-medium text-white">{row.nomeEE}</td>
-                            <td className="px-6 py-4 text-sm" style={{ color: '#8899A6' }}>{row.emailEE}</td>
-                            <td className="px-6 py-4 text-sm font-medium" style={{ color: '#1DA1F2' }}>{row.nomeAluno}</td>
-                            <td className="px-6 py-4">
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium" style={{ background: 'rgba(0,186,124,0.2)', color: '#00BA7C', border: '1px solid rgba(0,186,124,0.3)' }}>
-                                Pronto
-                              </span>
-                            </td>
+                            {excelColumns.map((columnName) => (
+                              <td key={`${i}-${columnName}`} className="px-6 py-4 text-sm" style={{ color: '#8899A6' }}>
+                                {row[columnName]}
+                              </td>
+                            ))}
                           </tr>
                         ))}
                       </tbody>
@@ -380,6 +509,7 @@ export default function Dashboard() {
                   <div className="mt-6 flex justify-end">
                     <button
                       onClick={() => setCurrentStep(2)}
+                      disabled={!selectedEmailColumns.length || !emailColumnValidation.isValid}
                       className="btn-shine twitter-btn-primary text-white font-bold py-3 px-8 rounded-xl flex items-center space-x-2 transition-all transform hover:scale-[1.02]"
                     >
                       <span>Continuar para Template</span>
@@ -408,22 +538,27 @@ export default function Dashboard() {
                 <label className="block text-sm font-medium mb-3" style={{ color: '#8899A6' }}>
                   Inserir Variáveis (clique para adicionar):
                 </label>
-                <div className="flex flex-wrap gap-3">
-                  {[
-                    { label: '👤 {{EEName}} - Nome EE', value: '{{EEName}}' },
-                    { label: '📧 {{EEemail}} - Email', value: '{{EEemail}}' },
-                    { label: '🎓 {{studentName}} - Nome Aluno', value: '{{studentName}}' },
-                  ].map((v) => (
-                    <button
-                      key={v.value}
-                      onClick={() => insertVariable(v.value)}
-                      className="variable-tag px-4 py-2 rounded-lg text-sm font-medium text-white transition-all transform hover:scale-105"
-                      style={{ boxShadow: '0 2px 10px rgba(29,161,242,0.3)' }}
-                    >
-                      {v.label}
-                    </button>
-                  ))}
-                </div>
+                {excelColumns.length > 0 ? (
+                  <div className="flex flex-wrap gap-3">
+                    {excelColumns.map((columnName) => {
+                      const variable = `{{${columnName}}}`;
+                      return (
+                        <button
+                          key={columnName}
+                          onClick={() => insertVariable(variable)}
+                          className="variable-tag px-4 py-2 rounded-lg text-sm font-medium text-white transition-all transform hover:scale-105"
+                          style={{ boxShadow: '0 2px 10px rgba(29,161,242,0.3)' }}
+                        >
+                          {variable}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm" style={{ color: '#8899A6' }}>
+                    Carregue um ficheiro para gerar automaticamente as variáveis das colunas.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-6">
@@ -460,7 +595,7 @@ export default function Dashboard() {
                     <div className="pb-3 mb-3" style={{ borderBottom: '1px solid #38444D' }}>
                       <span className="text-sm" style={{ color: '#8899A6' }}>Para:</span>
                       <span className="ml-2 text-sm font-medium" style={{ color: '#1DA1F2' }}>
-                        {excelData.length > 0 ? excelData[0].emailEE : 'ee@exemplo.com'}
+                        {previewRecipients}
                       </span>
                     </div>
                     <div className="pb-3 mb-3" style={{ borderBottom: '1px solid #38444D' }}>
@@ -509,7 +644,7 @@ export default function Dashboard() {
               <div className="grid md:grid-cols-3 gap-6 mb-8">
                 {[
                   { value: excelData.length, label: 'Total de Destinatários', color: '#1DA1F2' },
-                  { value: 3, label: 'Variáveis Usadas', color: '#00BA7C' },
+                  { value: usedVariableCount, label: 'Variáveis Usadas', color: '#00BA7C' },
                   { value: 'Gmail', label: 'Método de Envio', color: '#F4212E' },
                 ].map((stat, i) => (
                   <div key={i} className="glass rounded-2xl p-6 text-center" style={{ border: '1px solid #38444D', background: '#192734' }}>
