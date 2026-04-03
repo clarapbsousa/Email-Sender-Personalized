@@ -21,7 +21,7 @@ export default function Dashboard() {
   const router = useRouter();
   const [excelData, setExcelData] = useState<ExcelRow[]>([]);
   const [excelColumns, setExcelColumns] = useState<string[]>([]);
-  const [selectedEmailColumn, setSelectedEmailColumn] = useState("");
+  const [selectedEmailColumns, setSelectedEmailColumns] = useState<string[]>([]);
   const [currentStep, setCurrentStep] = useState<Step>(1);
   const [subject, setSubject] = useState("Convite - Espetáculo Final da Escola");
   const [body, setBody] = useState(
@@ -57,21 +57,50 @@ export default function Dashboard() {
   );
 
   const emailColumnValidation = useMemo(() => {
-    if (!selectedEmailColumn || !excelData.length) {
-      return { hasSelection: Boolean(selectedEmailColumn), invalidCount: 0, isValid: false };
+    if (!selectedEmailColumns.length || !excelData.length) {
+      return {
+        hasSelection: selectedEmailColumns.length > 0,
+        invalidCount: 0,
+        invalidByColumn: {} as Record<string, number>,
+        isValid: false,
+      };
     }
 
-    const invalidCount = excelData.reduce((count, row) => {
-      const value = (row[selectedEmailColumn] || "").trim();
-      return value.includes("@") ? count : count + 1;
-    }, 0);
+    const invalidByColumn = selectedEmailColumns.reduce<Record<string, number>>(
+      (acc, columnName) => {
+        const invalidForColumn = excelData.reduce((count, row) => {
+          const value = (row[columnName] || "").trim();
+          return value.includes("@") ? count : count + 1;
+        }, 0);
+
+        acc[columnName] = invalidForColumn;
+        return acc;
+      },
+      {}
+    );
+
+    const invalidCount = Object.values(invalidByColumn).reduce(
+      (total, count) => total + count,
+      0
+    );
 
     return {
       hasSelection: true,
       invalidCount,
+      invalidByColumn,
       isValid: invalidCount === 0,
     };
-  }, [excelData, selectedEmailColumn]);
+  }, [excelData, selectedEmailColumns]);
+
+  const previewRecipients = useMemo(() => {
+    if (!excelData.length || selectedEmailColumns.length === 0) return "ee@exemplo.com";
+
+    const recipients = selectedEmailColumns
+      .map((columnName) => (excelData[0][columnName] || "").trim())
+      .filter((value) => value !== "");
+
+    return recipients.length > 0 ? recipients.join(", ") : "ee@exemplo.com";
+  }, [excelData, selectedEmailColumns]);
 
   const usedVariableCount = useMemo(() => {
     const variableRegex = /{{\s*([^}]+)\s*}}|{\s*([^}]+)\s*}/g;
@@ -143,7 +172,7 @@ export default function Dashboard() {
         });
 
         setExcelColumns(columns);
-        setSelectedEmailColumn("");
+        setSelectedEmailColumns([]);
         setExcelData(parsed);
         setToast({ message: "", type: "info", visible: false });
         showToast("Ficheiro carregado com sucesso!", "success");
@@ -172,7 +201,7 @@ export default function Dashboard() {
   const resetUpload = () => {
     setExcelData([]);
     setExcelColumns([]);
-    setSelectedEmailColumn("");
+    setSelectedEmailColumns([]);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -207,8 +236,8 @@ export default function Dashboard() {
   };
 
   const handleSendEmails = async () => {
-    if (!selectedEmailColumn) {
-      showToast("Selecione primeiro a coluna de emails.", "error");
+    if (!selectedEmailColumns.length) {
+      showToast("Selecione pelo menos uma coluna de emails.", "error");
       return;
     }
 
@@ -228,7 +257,7 @@ export default function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           excelData,
-          emailColumn: selectedEmailColumn,
+          emailColumns: selectedEmailColumns,
           subject: apiSubject,
           message: apiMessage,
         }),
@@ -252,7 +281,7 @@ export default function Dashboard() {
   const startNewCampaign = () => {
     setExcelData([]);
     setExcelColumns([]);
-    setSelectedEmailColumn("");
+    setSelectedEmailColumns([]);
     setCurrentStep(1);
     setSubject("Convite - Espetáculo Final da Escola");
     setBody(
@@ -402,29 +431,34 @@ export default function Dashboard() {
                 <div className="mt-8 animate-slide-up">
                   <div className="mb-6">
                     <label className="block text-sm font-medium mb-2" style={{ color: '#8899A6' }}>
-                      Coluna de Email (obrigatório)
+                      Colunas de Email (obrigatório)
                     </label>
-                    <select
-                      value={selectedEmailColumn}
-                      onChange={(e) => setSelectedEmailColumn(e.target.value)}
-                      className="w-full twitter-input rounded-xl px-4 py-3 font-medium"
-                    >
-                      <option value="">Selecione a coluna com emails</option>
+                    <div className="space-y-2 rounded-xl p-4" style={{ border: '1px solid #38444D', background: '#15202B' }}>
                       {excelColumns.map((columnName) => (
-                        <option key={columnName} value={columnName}>
-                          {columnName}
-                        </option>
+                        <label key={columnName} className="flex items-center space-x-3 text-sm" style={{ color: '#8899A6' }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedEmailColumns.includes(columnName)}
+                            onChange={(e) => {
+                              setSelectedEmailColumns((previous) => {
+                                if (e.target.checked) return [...previous, columnName];
+                                return previous.filter((col) => col !== columnName);
+                              });
+                            }}
+                          />
+                          <span>{columnName}</span>
+                        </label>
                       ))}
-                    </select>
+                    </div>
 
-                    {selectedEmailColumn && !emailColumnValidation.isValid && (
+                    {selectedEmailColumns.length > 0 && !emailColumnValidation.isValid && (
                       <p className="mt-2 text-sm" style={{ color: '#F4212E' }}>
-                        A coluna selecionada tem {emailColumnValidation.invalidCount} valor(es) sem @.
+                        As colunas selecionadas têm {emailColumnValidation.invalidCount} valor(es) sem @.
                       </p>
                     )}
-                    {selectedEmailColumn && emailColumnValidation.isValid && (
+                    {selectedEmailColumns.length > 0 && emailColumnValidation.isValid && (
                       <p className="mt-2 text-sm" style={{ color: '#00BA7C' }}>
-                        Coluna válida: todos os valores contêm @.
+                        Colunas válidas: todos os valores contêm @.
                       </p>
                     )}
                   </div>
@@ -475,7 +509,7 @@ export default function Dashboard() {
                   <div className="mt-6 flex justify-end">
                     <button
                       onClick={() => setCurrentStep(2)}
-                      disabled={!selectedEmailColumn || !emailColumnValidation.isValid}
+                      disabled={!selectedEmailColumns.length || !emailColumnValidation.isValid}
                       className="btn-shine twitter-btn-primary text-white font-bold py-3 px-8 rounded-xl flex items-center space-x-2 transition-all transform hover:scale-[1.02]"
                     >
                       <span>Continuar para Template</span>
@@ -561,9 +595,7 @@ export default function Dashboard() {
                     <div className="pb-3 mb-3" style={{ borderBottom: '1px solid #38444D' }}>
                       <span className="text-sm" style={{ color: '#8899A6' }}>Para:</span>
                       <span className="ml-2 text-sm font-medium" style={{ color: '#1DA1F2' }}>
-                        {excelData.length > 0 && selectedEmailColumn
-                          ? excelData[0][selectedEmailColumn] || 'ee@exemplo.com'
-                          : 'ee@exemplo.com'}
+                        {previewRecipients}
                       </span>
                     </div>
                     <div className="pb-3 mb-3" style={{ borderBottom: '1px solid #38444D' }}>

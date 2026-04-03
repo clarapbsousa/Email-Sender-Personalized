@@ -28,35 +28,42 @@ export async function POST(request: NextRequest) {
   try {
     const {
       excelData,
-      emailColumn,
+      emailColumns,
       subject,
       message,
       resumeSessionId,
     }: {
       excelData: ExcelRow[]
-      emailColumn: string
+      emailColumns: string[]
       subject: string
       message: string
       resumeSessionId?: string
     } = await request.json()
     const session: any = await getServerSession(authOptions)
 
-    if (!emailColumn) {
+    if (!emailColumns || emailColumns.length === 0) {
       return NextResponse.json(
-        { success: false, message: "É obrigatório selecionar a coluna de emails." },
+        { success: false, message: "É obrigatório selecionar pelo menos uma coluna de emails." },
         { status: 400 }
       )
     }
 
-    const invalidRows = excelData
-      .map((row, index) => ({ index, value: (row[emailColumn] || "").trim() }))
-      .filter(({ value }) => !value.includes("@"))
+    const invalidRows = excelData.flatMap((row, index) => {
+      return emailColumns
+        .map((columnName) => ({
+          index,
+          columnName,
+          value: (row[columnName] || "").trim(),
+        }))
+        .filter(({ value }) => !value.includes("@"))
+    })
 
     if (invalidRows.length > 0) {
+      const uniqueColumns = Array.from(new Set(invalidRows.map((item) => item.columnName))).join(", ")
       return NextResponse.json(
         {
           success: false,
-          message: `A coluna '${emailColumn}' contém ${invalidRows.length} valor(es) inválido(s) sem @.`,
+          message: `As colunas (${uniqueColumns}) contêm ${invalidRows.length} valor(es) inválido(s) sem @.`,
         },
         { status: 400 }
       )
@@ -85,10 +92,15 @@ export async function POST(request: NextRequest) {
     const gmail = google.gmail({ version: "v1", auth: oauth2Client })
 
     const sendEmail = async (row: ExcelRow, index: number, retryCount = 0): Promise<any> => {
-      const recipientEmail = (row[emailColumn] || "").trim()
+      const recipientEmails = emailColumns
+        .map((columnName) => (row[columnName] || "").trim())
+        .filter((value) => value.includes("@"))
+
+      const dedupedRecipientEmails = Array.from(new Set(recipientEmails))
+      const recipientEmail = dedupedRecipientEmails.join(",")
 
       if (!recipientEmail) {
-        return { email: "", success: false, error: `Linha sem valor para a coluna '${emailColumn}'` }
+        return { email: "", success: false, error: `Linha sem emails válidos nas colunas selecionadas` }
       }
 
       const emailKey = `${sessionId}-${recipientEmail}`
@@ -96,7 +108,7 @@ export async function POST(request: NextRequest) {
       // Verificar se já foi enviado com sucesso
       const cachedStatus = emailStatusCache.get(emailKey)
       if (cachedStatus?.status === 'sent') {
-        return { email: recipientEmail, success: true, cached: true }
+        return { email: recipientEmail, recipients: dedupedRecipientEmails, success: true, cached: true }
       }
 
       const personalizedMessage = applyTemplateWithRow(message, row)
@@ -129,7 +141,7 @@ export async function POST(request: NextRequest) {
         // Guardar status de sucesso
         emailStatusCache.set(emailKey, { email: recipientEmail, status: 'sent' })
         
-        return { email: recipientEmail, success: true }
+        return { email: recipientEmail, recipients: dedupedRecipientEmails, success: true }
         
       } catch (error: any) {
         const errorMsg = error.message || String(error)
@@ -161,6 +173,7 @@ export async function POST(request: NextRequest) {
         console.error(`✗ Erro ao enviar email ${index + 1}/${excelData.length} para ${recipientEmail}:`, errorMsg)
         return { 
           email: recipientEmail,
+          recipients: dedupedRecipientEmails,
           success: false, 
           error: errorMsg 
         }
