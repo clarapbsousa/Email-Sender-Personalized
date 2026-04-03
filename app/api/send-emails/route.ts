@@ -4,10 +4,47 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 
 const emailStatusCache = new Map<string, { email: string; status: 'pending' | 'sent' | 'failed'; error?: string }>()
+type ExcelRow = Record<string, string>
+
+const extractEmailFromRow = (row: ExcelRow) => {
+  const entries = Object.entries(row)
+  const emailRegex = /^\S+@\S+\.\S+$/
+
+  const emailColumn = entries.find(([columnName, value]) => {
+    return /email/i.test(columnName) && emailRegex.test((value || "").trim())
+  })
+  if (emailColumn) return emailColumn[1]
+
+  const firstEmailLikeValue = entries.find(([, value]) => emailRegex.test((value || "").trim()))
+  return firstEmailLikeValue?.[1] || ""
+}
+
+const escapeRegExp = (value: string) => {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+const applyTemplateWithRow = (template: string, row: ExcelRow) => {
+  let parsedTemplate = template
+
+  Object.entries(row).forEach(([columnName, columnValue]) => {
+    const escapedColumnName = escapeRegExp(columnName)
+    parsedTemplate = parsedTemplate.replace(
+      new RegExp(`{\\s*${escapedColumnName}\\s*}`, "g"),
+      columnValue || ""
+    )
+  })
+
+  return parsedTemplate
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const { excelData, subject, message, resumeSessionId } = await request.json()
+    const {
+      excelData,
+      subject,
+      message,
+      resumeSessionId,
+    }: { excelData: ExcelRow[]; subject: string; message: string; resumeSessionId?: string } = await request.json()
     const session: any = await getServerSession(authOptions)
 
     if (!session?.user?.email || !session?.accessToken) {
@@ -32,26 +69,27 @@ export async function POST(request: NextRequest) {
 
     const gmail = google.gmail({ version: "v1", auth: oauth2Client })
 
-    const sendEmail = async (row: any, index: number, retryCount = 0): Promise<any> => {
-      const emailKey = `${sessionId}-${row.emailEE}`
+    const sendEmail = async (row: ExcelRow, index: number, retryCount = 0): Promise<any> => {
+      const recipientEmail = extractEmailFromRow(row)
+
+      if (!recipientEmail) {
+        return { email: "", success: false, error: "Nenhuma coluna de email válida encontrada na linha" }
+      }
+
+      const emailKey = `${sessionId}-${recipientEmail}`
       
       // Verificar se já foi enviado com sucesso
       const cachedStatus = emailStatusCache.get(emailKey)
       if (cachedStatus?.status === 'sent') {
-        return { email: row.emailEE, success: true, cached: true }
+        return { email: recipientEmail, success: true, cached: true }
       }
 
-      const personalizedMessage = message
-        .replace(/{nomeEE}/g, row.nomeEE)
-        .replace(/{nomeAluno}/g, row.nomeAluno)
-      
-      const personalizedSubject = subject
-        .replace(/{nomeEE}/g, row.nomeEE)
-        .replace(/{nomeAluno}/g, row.nomeAluno)
+      const personalizedMessage = applyTemplateWithRow(message, row)
+      const personalizedSubject = applyTemplateWithRow(subject, row)
 
       const emailContent = [
         `From: ${session.user.email}`,
-        `To: ${row.emailEE}`,
+        `To: ${recipientEmail}`,
         "Content-Type: text/html; charset=UTF-8",
         "MIME-Version: 1.0",
         `Subject: =?UTF-8?B?${Buffer.from(personalizedSubject).toString("base64")}?=`,
@@ -74,9 +112,9 @@ export async function POST(request: NextRequest) {
         })
         
         // Guardar status de sucesso
-        emailStatusCache.set(emailKey, { email: row.emailEE, status: 'sent' })
+        emailStatusCache.set(emailKey, { email: recipientEmail, status: 'sent' })
         
-        return { email: row.emailEE, success: true }
+        return { email: recipientEmail, success: true }
         
       } catch (error: any) {
         const errorMsg = error.message || String(error)
@@ -103,11 +141,11 @@ export async function POST(request: NextRequest) {
         }
         
         // Guardar status de falha
-        emailStatusCache.set(emailKey, { email: row.emailEE, status: 'failed', error: errorMsg })
+        emailStatusCache.set(emailKey, { email: recipientEmail, status: 'failed', error: errorMsg })
         
-        console.error(`✗ Erro ao enviar email ${index + 1}/${excelData.length} para ${row.emailEE}:`, errorMsg)
+        console.error(`✗ Erro ao enviar email ${index + 1}/${excelData.length} para ${recipientEmail}:`, errorMsg)
         return { 
-          email: row.emailEE, 
+          email: recipientEmail,
           success: false, 
           error: errorMsg 
         }
