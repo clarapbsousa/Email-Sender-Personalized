@@ -433,7 +433,7 @@ export default function Dashboard() {
                     <label className="block text-sm font-medium mb-2" style={{ color: '#8899A6' }}>
                       Colunas de Email (obrigatório)
                     </label>
-                    <div className="space-y-2 rounded-xl p-4" style={{ border: '1px solid #38444D', background: '#15202B' }}>
+                    <div className="space-y-2 rounded-xl p-4 max-h-64 overflow-y-auto" style={{ border: '1px solid #38444D', background: '#15202B' }}>
                       {excelColumns.map((columnName) => (
                         <label key={columnName} className="flex items-center space-x-3 text-sm" style={{ color: '#8899A6' }}>
                           <input
